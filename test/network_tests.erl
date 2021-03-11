@@ -26,3 +26,20 @@ neighbors_test() ->
                  sets:from_list(network:neighbors(2, Network))),
     ?assertEqual(sets:from_list([2, 3, 4]),
                  sets:from_list(network:neighbors(1, Network))).
+
+receive_nodes(Receipts) ->
+    receive
+        {node, Node} ->
+            receive_nodes([Node | Receipts])
+    after 0 ->
+            % not running concurrently, so if nothing is available in
+            % the inbox, just return what we got so far.
+            Receipts
+    end.
+
+foreach_test() ->
+    Network = network:from_edges([{1, 2}, {2, 3}, {1, 3}]),
+    network:foreach_node(fun(Node) -> self() ! {node, Node} end,
+                         Network),
+    Receipts = receive_nodes([]),
+    ?assertEqual([1, 2, 3], lists:sort(Receipts)).

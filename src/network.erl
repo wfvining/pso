@@ -8,8 +8,7 @@
 -module(network).
 
 -export([empty/0, empty/1, from_edges/1, from_edges/2]).
--export([neighbors/2, all_nodes/1, all_edges/1]).
-% -export([foreach_node/2]).
+-export([neighbors/2, all_nodes/1, all_edges/1, foreach_node/2]).
 
 -record(network, {type = undirected :: edge_type(),
                   adjacency_list = #{} :: #{term() => gb_sets:set()}}).
@@ -75,3 +74,8 @@ all_edges(#network{adjacency_list = AdjacencyList}) ->
       fun(Node, Neighbors, Edges) ->
               [{Node, N} || N <- gb_sets:to_list(Neighbors), Node < N] ++ Edges
       end, [], AdjacencyList).
+
+%% @doc Apply `Fun' to each node in `Network'.
+-spec foreach_node(Fun :: fun((term()) -> term()), Network :: network()) -> ok.
+foreach_node(Fun, Network) ->
+    lists:foreach(Fun, maps:keys(Network#network.adjacency_list)).
