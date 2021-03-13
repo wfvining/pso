@@ -24,7 +24,7 @@
 %% gen_statem callbacks
 -export([init/1, callback_mode/0]).
 %% state callbacks
--export([initialize/3, accelerate/3, eval/3, wait/3]).
+-export([initialize/3, accelerate/3, eval/3]).
 
 -type velocity() :: term().
 -type position() :: term().
@@ -131,35 +131,28 @@ initialize(cast, {neighbors, Neighbors}, Data) ->
     {keep_state, Data#state{ neighbors = Neighbors, refs = Refs }}.
 
 %% @doc
-%% Upon entry into this state the position is evaluated and the
-%% particle is moved into the `wait' state.
+%% Evaluate the current position then wait for a signal to continue
+%% before accelerating the particle.
 %% @end
-%% TODO can this be folded in to the `wait' state?
 eval(enter, initialize, Data = #state{ position = Position,
                                        module = Module }) ->
     Value = Module:eval(Position),
-    {next_state, wait, Data#state{value = Value, pbest = Position}};
+    {keep_state, Data#state{value = Value, pbest = Position}};
 eval(enter, _OldState, Data = #state{ position = Position,
                                       vbest = VBest,
                                       module = Module }) ->
     Value = Module:eval(Position),
     case Module:compare(VBest, Value) of
         true ->
-            {next_state, wait, Data#state{ value = Value,
-                                           pbest = Position,
-                                           vbest = Value }};
+            {keep_state, Data#state{ value = Value,
+                                     pbest = Position,
+                                     vbest = Value }};
         false ->
-            {next_state, wait, Data#state{ value = Value }}
-    end.
-
-%% @doc
-%% Wait for a signal to continue before accelerating the particle.
-%% @end
-wait(enter, _, Data) ->
-    {keep_state, Data};
-wait(cast, continue, Data) ->
+            {keep_state, Data#state{ value = Value }}
+    end;
+eval(cast, continue, Data) ->
     {next_state, accelerate, Data};
-wait(cast, {value, _, _}, Data) ->
+eval(cast, {value, _, _}, Data) ->
     % Postpone values received from neighboring particles until the
     % `accelerate' state.
     {keep_state, Data, {postpone, true}}.
