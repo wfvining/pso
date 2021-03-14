@@ -172,20 +172,19 @@ accelerate(enter, _OldState, Data = #state{position = Position,
       end,
       Data#state.neighbors);
 accelerate(cast, {value, Position, Value},
-           Data = #state{ received = Received, neighbors = Neighbors }) ->
+           Data = #state{received = Received, neighbors = Neighbors,
+                         module = Module, position = Position}) ->
     % If all neighbors are accounted for then accelerate the particle
     % and transition to `eval' state. Since edges are undirected (in
     % this initial model) we can check this by comparing the length of
     % the received list with the length of the neighbors list.
     case [{Position, Value}|Received] of
         NewReceived when length(NewReceived) =:= length(Neighbors) ->
+            NewVelocity = accelerate_particle(Data, NewReceived),
             {next_state, eval,
              Data#state{ received = [],
-                         % XXX this returns a velocity, not a
-                         % position. The updated velocity should be
-                         % applied to the current position prior to
-                         % the evaluation of the new position.
-                         position = accelerate_particle(Data, NewReceived)}};
+                         position = Module:move(Position, NewVelocity),
+                         velocity = NewVelocity}};
         NewReceived ->
             {keep_state, Data#state{received = NewReceived}}
     end.
