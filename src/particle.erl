@@ -20,7 +20,7 @@
 -behavior(gen_statem).
 
 %% api functions
--export([start_link/3, assign_neighbors/2, step/1]).
+-export([start_link/3, assign_neighbors/2, step/1, get_position/1]).
 %% gen_statem callbacks
 -export([init/1, callback_mode/0]).
 %% state callbacks
@@ -68,6 +68,9 @@
 %% Return true if `ValueA' is less than or equal to `ValueB'.
 -callback compare(ValueA :: any(), ValueB :: any()) -> boolean().
 
+-define(HANDLE_COMMON,
+        ?FUNCTION_NAME(T, C, D) -> handle_common((T), (C), (D))).
+
 %% @doc
 %% Start a particle and link to its process. The particle is initially
 %% at `Position' and moving at `Velocity'. `Module' is the callback
@@ -87,6 +90,11 @@ assign_neighbors(Particle, Neighbors) ->
 step(Particle) ->
     gen_statem:cast(Particle, continue).
 
+%% @doc Get the position of the particle.
+-spec get_position(Particle :: pid()) -> position().
+get_position(Particle) ->
+    gen_statem:call(Particle, position).
+
 callback_mode() ->
     [state_functions, state_enter].
 
@@ -94,6 +102,9 @@ init({Position, Velocity, Module}) ->
     {ok, initialize, #state{ position = Position,
                              velocity = Velocity,
                              module = Module}}.
+
+handle_common({call, From}, position, #state{ position = Position }) ->
+    {keep_state_and_data, [{reply, From, Position}]}.
 
 %% Apply the PSO acceleration algorithm to the particle state.
 -spec accelerate_particle(Data :: particle_state(), list(neighbor_state()))
@@ -124,11 +135,12 @@ accelerate_particle(#state{pbest = PBest,
 %% @end
 initialize(enter, _, Data) ->
     {keep_state, Data};
-initialize(cast, start, Data) ->
+initialize(cast, continue, Data) ->
     {next_state, eval, Data};
 initialize(cast, {neighbors, Neighbors}, Data) ->
     Refs = [monitor(process, Neighbor) || Neighbor <- Neighbors],
-    {keep_state, Data#state{ neighbors = Neighbors, refs = Refs }}.
+    {keep_state, Data#state{ neighbors = Neighbors, refs = Refs }};
+?HANDLE_COMMON.
 
 %% @doc
 %% Evaluate the current position then wait for a signal to continue
@@ -155,7 +167,8 @@ eval(cast, continue, Data) ->
 eval(cast, {value, _, _}, Data) ->
     % Postpone values received from neighboring particles until the
     % `accelerate' state.
-    {keep_state, Data, {postpone, true}}.
+    {keep_state, Data, {postpone, true}};
+?HANDLE_COMMON.
 
 %% @doc
 %% Upon entry into the accelerate state the particle reports its
@@ -170,7 +183,8 @@ accelerate(enter, _OldState, Data = #state{position = Position,
       fun(Neighbor) ->
               gen_statem:cast(Neighbor, {value, Position, Value})
       end,
-      Data#state.neighbors);
+      Data#state.neighbors),
+    keep_state_and_data;
 accelerate(cast, {value, Position, Value},
            Data = #state{received = Received, neighbors = Neighbors,
                          module = Module, position = Position}) ->
@@ -187,4 +201,5 @@ accelerate(cast, {value, Position, Value},
                          velocity = NewVelocity}};
         NewReceived ->
             {keep_state, Data#state{received = NewReceived}}
-    end.
+    end;
+?HANDLE_COMMON.
