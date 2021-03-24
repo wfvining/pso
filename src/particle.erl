@@ -163,6 +163,7 @@ eval(enter, _OldState, Data = #state{ position = Position,
             {keep_state, Data#state{ value = Value }}
     end;
 eval(cast, continue, Data) ->
+    report(Data),
     {next_state, accelerate, Data};
 eval(cast, {value, _, _}, Data) ->
     % Postpone values received from neighboring particles until the
@@ -170,36 +171,35 @@ eval(cast, {value, _, _}, Data) ->
     {keep_state, Data, {postpone, true}};
 ?HANDLE_COMMON.
 
-%% @doc
-%% Upon entry into the accelerate state the particle reports its
-%% current position and value to its neighboring particles. The
-%% particle then waits until all its neighbors have reported their
-%% position and value at which point its position is updated and it
-%% is accelerated.
-%% @end
-accelerate(enter, _OldState, Data = #state{position = Position,
-                                           value = Value}) ->
+report(Data = #state{position = Position, value = Value}) ->
     lists:foreach(
       fun(Neighbor) ->
               gen_statem:cast(Neighbor, {value, Position, Value})
       end,
-      Data#state.neighbors),
-    keep_state_and_data;
-accelerate(cast, {value, Position, Value},
-           Data = #state{received = Received, neighbors = Neighbors,
-                         module = Module, position = Position}) ->
+      Data#state.neighbors).
+
+do_accelerate(Data = #state{received = Received, neighbors = Neighbors,
+                            module = Module, position = Position})
+  when length(Received) =:= length(Neighbors) ->
     % If all neighbors are accounted for then accelerate the particle
-    % and transition to `eval' state. Since edges are undirected (in
-    % this initial model) we can check this by comparing the length of
-    % the received list with the length of the neighbors list.
-    case [{Position, Value}|Received] of
-        NewReceived when length(NewReceived) =:= length(Neighbors) ->
-            NewVelocity = accelerate_particle(Data, NewReceived),
-            {next_state, eval,
-             Data#state{ received = [],
-                         position = Module:move(Position, NewVelocity),
-                         velocity = NewVelocity}};
-        NewReceived ->
-            {keep_state, Data#state{received = NewReceived}}
-    end;
+    % and transition to `eval' state.
+    NewVelocity = accelerate_particle(Data, Received),
+    {next_state, eval,
+     Data#state{received = [],
+                position = Module:move(Position, NewVelocity),
+                velocity = NewVelocity}};
+do_accelerate(Data) ->
+    %% Cannot use `keep_state_and_data' since `Data' may have been
+    %% changed before being passed in to this function.
+    {keep_state, Data}.
+
+%% @doc
+%% The particle waits until all its neighbors have reported their
+%% position and value at which point its position is updated and it is
+%% accelerated.
+%% @end
+accelerate(enter, _OldState, Data) ->
+    do_accelerate(Data);
+accelerate(cast, {value, Position, Value}, Data = #state{ received = Received }) ->
+    do_accelerate(Data#state{ received = [{Position, Value}|Received]});
 ?HANDLE_COMMON.
