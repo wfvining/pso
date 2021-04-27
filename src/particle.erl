@@ -1,205 +1,117 @@
 %%% @author Will Vining <wfvining@gmail.com>
 %%% @copyright (C) 2021, Will Vining
 %%% @doc
-%%% A particle has a poistion, a velocity, and a set of neighbors.
-%%%
-%%% Upon initialization a particle enters into a loop:
-%%% <ul>
-%%% <li> the value at its current position is computed </li>
-%%% <li> the particle waits to be instructed to continue </li>
-%%% <li> the particle sends its position and value to all its neighbors </li>
-%%% <li> it awaits the current value and position from all other neighbors </li>
-%%% <li> it updates its position and velocity according to the information </li>
-%%%   received from the neighbors.
-%%% </ul>
+%%% A particle for a minimizing particle swarm optimization problem.
 %%% @end
-%%% Created : 21 Feb 2021 by Will Vining <wfvining@gmail.com>
+%%% Created : 25 Apr 2021 by Will Vining <wfvining@gmail.com>
 
 -module(particle).
 
--behavior(gen_statem).
+-export([new/3, step/2, position/1, value/1]).
 
-%% api functions
--export([start_link/3, assign_neighbors/2, step/1, get_position/1]).
-%% gen_statem callbacks
--export([init/1, callback_mode/0]).
-%% state callbacks
--export([initialize/3, accelerate/3, eval/3]).
+-export_type([particle/0, position/0]).
 
--type velocity() :: term().
--type position() :: term().
+-type vector() :: [float()].
+-type position() :: vector().
+-type velocity() :: vector().
 -type value() :: term().
+-type objective_fun() :: fun((position()) -> value()).
 
--record(state, {position :: position(),
-                pbest :: position(),
-                vbest :: any(),
-                velocity :: velocity(),
-                neighbors = [] :: list(pid()),
-                received = [] :: list({position(), term()}),
-                refs = [] :: list(reference()),
-                value :: value(),
-                module :: module()}).
+-record(particle, {position = [0.0] :: position(),
+                   velocity = [0.0] :: velocity(),
+                   value :: value(),
+                   objective :: objective_fun(),
+                   best_position = [0.0] :: position(),
+                   best_value = 0.0 :: value()}).
 
--type particle_state() :: #state{}.
--type neighbor_state() :: {position(), value()}.
-
-%% Evaluate the objective function.
--callback eval(Position :: any()) ->
-    {ok, Value :: any()} | {error, Reason :: any()}.
-%% Move the particle.
--callback move(Position :: any(), Velocity :: velocity()) ->
-    {ok, NewPosition :: any()}.
-
-%% Acceleration requires the following three operations
-
-%% Return `PositionA' minus `PositionB' (e.g. the displacement between
-%% the positions).
--callback displacement(PositionA :: position(), PositionB :: position()) ->
-    position().
-
-%% Multiply `Velocity' by `Scale'
--callback scale_velocity(Scale :: float(), Velocity :: velocity()) ->
-    velocity().
-
-%% Add two velocities.
--callback add_velocity(VelocityA :: velocity(), VelocityB :: velocity()) ->
-    velocity().
-
-%% Return true if `ValueA' is less than or equal to `ValueB'.
--callback compare(ValueA :: any(), ValueB :: any()) -> boolean().
-
--define(HANDLE_COMMON,
-        ?FUNCTION_NAME(T, C, D) -> handle_common((T), (C), (D))).
+-opaque particle() :: #particle{}.
 
 %% @doc
-%% Start a particle and link to its process. The particle is initially
-%% at `Position' and moving at `Velocity'. `Module' is the callback
-%% module implementing the `particle' behavior.
+%% Initialize a new particle at `Position'. The particle's initial
+%% velocity is `Velocity' and its objective function is computed by
+%% `ObjectiveFun'. Immediately upon creation (before returning) the
+%% particle's initial value is calculated by calling
+%% ``ObjectiveFun(Position)''.
 %% @end
--spec start_link(position(), velocity(), module()) -> {ok, pid()}.
-start_link(Position, Velocity, Module) ->
-    gen_statem:start_link(?MODULE, {Position, Velocity, Module}, []).
-
-%% @doc Assign `Neighbors' as the neighbors of `Particle'.
--spec assign_neighbors(Particle :: pid(), Neighbors :: list(pid())) -> ok.
-assign_neighbors(Particle, Neighbors) ->
-    gen_statem:cast(Particle, {neighbors, Neighbors}).
-
-%% @doc Step the particle through a single iteration of the PSO algorithm.
--spec step(Particle :: pid()) -> ok.
-step(Particle) ->
-    gen_statem:cast(Particle, continue).
-
-%% @doc Get the position of the particle.
--spec get_position(Particle :: pid()) -> position().
-get_position(Particle) ->
-    gen_statem:call(Particle, position).
-
-callback_mode() ->
-    [state_functions, state_enter].
-
-init({Position, Velocity, Module}) ->
-    {ok, initialize, #state{ position = Position,
-                             velocity = Velocity,
-                             module = Module}}.
-
-handle_common({call, From}, position, #state{ position = Position }) ->
-    {keep_state_and_data, [{reply, From, Position}]}.
-
-%% Apply the PSO acceleration algorithm to the particle state.
--spec accelerate_particle(Data :: particle_state(), list(neighbor_state()))
-                         -> velocity().
-accelerate_particle(#state{pbest = PBest,
-                           position = Position,
-                           module = Module,
-                           velocity = Velocity},
-                    Neighbors) ->
-    {NeighborBest, _} = lists:last(
-                          lists:sort(
-                            fun({_, ValueA}, {_, ValueB}) ->
-                                    Module:compare(ValueA, ValueB)
-                            end,
-                            Neighbors)),
-    BestDisplacement = Module:displacement(PBest, Position),
-    NeighborhoodDisplacement = Module:displacement(NeighborBest, Position),
-    Module:add_velocity(
-      Module:add_velocity(
-        Velocity,
-        Module:scale_velocity(2*rand:uniform(), BestDisplacement)),
-      Module:scale_velocity(2*rand:uniform(), NeighborhoodDisplacement)).
+-spec new(Position :: position(),
+          Velocity :: velocity(),
+          ValueFun :: fun((position()) -> value())) -> particle().
+new(Position, Velocity, ObjectiveFun) ->
+    Value = ObjectiveFun(Position),
+    #particle{position = Position,
+              velocity = Velocity,
+              value = Value,
+              objective = ObjectiveFun,
+              best_position = Position,
+              best_value = Value}.
 
 %% @doc
-%% Particles begin executing in this state. Here they wait for a list
-%% of neighboring particle PIDs to be provided, then for a singal that
-%% they should begin execution.
+%% Apply the original PSO acceleration algorithm to `Velocity'.
 %% @end
-initialize(enter, _, Data) ->
-    {keep_state, Data};
-initialize(cast, continue, Data) ->
-    {next_state, eval, Data};
-initialize(cast, {neighbors, Neighbors}, Data) ->
-    Refs = [monitor(process, Neighbor) || Neighbor <- Neighbors],
-    {keep_state, Data#state{ neighbors = Neighbors, refs = Refs }};
-?HANDLE_COMMON.
+-spec accelerate(Velocity :: velocity(),
+                 Position :: position(),
+                 PersonalBest :: position(),
+                 Neighbors :: [{position(), value()}]) -> velocity().
+accelerate(Velocity, CurrentPosition, BestPosition, Neighbors) ->
+    [{GlobalBest, _}|_] = lists:keysort(2, Neighbors),
+    SelfAcceleration = scale_vector(2.0 * rand:uniform_real(),
+                         subtract_vectors(BestPosition, CurrentPosition)),
+    GlobalAcceleration = scale_vector(2.0 * rand:uniform_real(),
+                           subtract_vectors(BestPosition, GlobalBest)),
+    add_vectors(Velocity, add_vectors(SelfAcceleration, GlobalAcceleration)).
+
+-spec scale_vector(float(), vector()) -> vector().
+scale_vector(ScaleFactor, X) ->
+    [ScaleFactor * Xi || Xi <- X].
+
+-spec subtract_vectors(X :: vector(), Y :: vector()) -> vector().
+subtract_vectors(X, Y) ->
+    lists:zipwith(fun(Xi, Yi) -> Xi - Yi end, X, Y).
+
+-spec add_vectors(X :: vector(), Y :: vector()) -> vector().
+add_vectors(X, Y) ->
+    lists:zipwith(fun(Xi, Yi) -> Xi + Yi end, X, Y).
+
+%% @doc Return the current position of `Particle'.
+-spec position(Particle :: particle()) -> position().
+position(#particle{position = Position}) -> Position.
 
 %% @doc
-%% Evaluate the current position then wait for a signal to continue
-%% before accelerating the particle.
+%% Return the particle's value. If the value is undefined an error is
+%% thrown.
 %% @end
-eval(enter, initialize, Data = #state{ position = Position,
-                                       module = Module }) ->
-    Value = Module:eval(Position),
-    {keep_state, Data#state{value = Value, pbest = Position}};
-eval(enter, _OldState, Data = #state{ position = Position,
-                                      vbest = VBest,
-                                      module = Module }) ->
-    Value = Module:eval(Position),
-    case Module:compare(VBest, Value) of
-        true ->
-            {keep_state, Data#state{ value = Value,
-                                     pbest = Position,
-                                     vbest = Value }};
-        false ->
-            {keep_state, Data#state{ value = Value }}
-    end;
-eval(cast, continue, Data) ->
-    report(Data),
-    {next_state, accelerate, Data};
-eval(cast, {value, _, _}, Data) ->
-    % Postpone values received from neighboring particles until the
-    % `accelerate' state.
-    {keep_state, Data, {postpone, true}};
-?HANDLE_COMMON.
+-spec value(Particle :: particle()) -> value().
+value(#particle{value = Value}) -> Value.
 
-report(Data = #state{position = Position, value = Value}) ->
-    lists:foreach(
-      fun(Neighbor) ->
-              gen_statem:cast(Neighbor, {value, Position, Value})
-      end,
-      Data#state.neighbors).
-
-do_accelerate(Data = #state{received = Received, neighbors = Neighbors,
-                            module = Module, position = Position})
-  when length(Received) =:= length(Neighbors) ->
-    % If all neighbors are accounted for then accelerate the particle
-    % and transition to `eval' state.
-    NewVelocity = accelerate_particle(Data, Received),
-    {next_state, eval,
-     Data#state{received = [],
-                position = Module:move(Position, NewVelocity),
-                velocity = NewVelocity}};
-do_accelerate(Data) ->
-    %% Cannot use `keep_state_and_data' since `Data' may have been
-    %% changed before being passed in to this function.
-    {keep_state, Data}.
+%% @doc Evaluate the objective function at the particle's current position.
+-spec eval(Particle :: particle(), Position :: position()) -> particle().
+eval(Particle = #particle{best_value = BestValue,
+                          objective = ObjectiveFun},
+     Position) ->
+    NewValue = ObjectiveFun(Position),
+    if
+        NewValue < BestValue ->
+            Particle#particle{best_value = NewValue,
+                              best_position = Position,
+                              value = NewValue,
+                              position = Position};
+        NewValue >= BestValue ->
+            Particle#particle{value = NewValue, position = Position}
+    end.
 
 %% @doc
-%% The particle waits until all its neighbors have reported their
-%% position and value at which point its position is updated and it is
-%% accelerated.
+%% Evaluate a single iteration of the PSO algorithm. The velocity of
+%% `Particle' is updated under the influence of `Neighbors' and the
+%% new velocity is applied to update the particle's position.
+%%
+%% `Neighbors' should contain the best solution found so far by each
+%% of the particles that influences this particle.
 %% @end
-accelerate(enter, _OldState, Data) ->
-    do_accelerate(Data);
-accelerate(cast, {value, Position, Value}, Data = #state{ received = Received }) ->
-    do_accelerate(Data#state{ received = [{Position, Value}|Received]});
-?HANDLE_COMMON.
+-spec step(Particle :: particle(), Neighbors :: [{position(), value()}]) -> particle().
+step(Particle, Neighbors) ->
+    NewVelocity = accelerate(Particle#particle.velocity,
+                             Particle#particle.position,
+                             Particle#particle.best_position,
+                             Neighbors),
+    NewPosition = add_vectors(Particle#particle.position, NewVelocity),
+    eval(Particle#particle{velocity = NewVelocity}, NewPosition).
