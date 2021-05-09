@@ -7,7 +7,7 @@
 
 -module(particle).
 
--export([new/3, step/2, position/1, value/1]).
+-export([new/3, step/2, position/1, value/1, state/1]).
 
 -export_type([particle/0, position/0]).
 
@@ -35,7 +35,7 @@
 %% @end
 -spec new(Position :: position(),
           Velocity :: velocity(),
-          ValueFun :: fun((position()) -> value())) -> particle().
+          ObjectiveFun :: fun((position()) -> value())) -> particle().
 new(Position, Velocity, ObjectiveFun) ->
     Value = ObjectiveFun(Position),
     #particle{position = Position,
@@ -83,6 +83,11 @@ position(#particle{position = Position}) -> Position.
 -spec value(Particle :: particle()) -> value().
 value(#particle{value = Value}) -> Value.
 
+%% @doc Return the position and value of `Particle'.
+-spec state(Particle :: particle()) -> {position(), value()}.
+state(Particle) ->
+    {position(Particle), value(Particle)}.
+
 %% @doc Evaluate the objective function at the particle's current position.
 -spec eval(Particle :: particle(), Position :: position()) -> particle().
 eval(Particle = #particle{best_value = BestValue,
@@ -104,7 +109,7 @@ eval(Particle = #particle{best_value = BestValue,
 %% `Particle' is updated under the influence of `Neighbors' and the
 %% new velocity is applied to update the particle's position.
 %%
-%% `Neighbors' should contain the best solution found so far by each
+%% `Neighbors' should contain the best solution found so fajr by each
 %% of the particles that influences this particle.
 %% @end
 -spec step(Particle :: particle(), Neighbors :: [{position(), value()}]) -> particle().
@@ -115,3 +120,20 @@ step(Particle, Neighbors) ->
                              Neighbors),
     NewPosition = add_vectors(Particle#particle.position, NewVelocity),
     eval(Particle#particle{velocity = NewVelocity}, NewPosition).
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+add_vectors_test() ->
+    ?assertEqual([0, 0, 0], add_vectors([1, 2, 3], [-1, -2, -3])).
+
+scale_vector_test_() ->
+    [?_assertEqual([0.0, 0.0, 0.0],
+                   scale_vector(0.0, [1.0, 2.0, 3.0])),
+     ?_assertEqual([1.0, 2.0, 3.0],
+                   scale_vector(1.0, [1.0, 2.0, 3.0])),
+     ?_assertEqual([-3.0, -4.0, 7.0],
+                   scale_vector(2.0, [-1.5, -2, 3.5]))].
+
+-endif.
