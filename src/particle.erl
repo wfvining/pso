@@ -26,6 +26,9 @@
 
 -opaque particle() :: #particle{}.
 
+-define(PHI, 1.49618).
+-define(OMEGA, 0.7298).
+
 %% @doc
 %% Initialize a new particle at `Position'. The particle's initial
 %% velocity is `Velocity' and its objective function is computed by
@@ -54,23 +57,13 @@ new(Position, Velocity, ObjectiveFun) ->
                  Neighbors :: [{position(), value()}]) -> velocity().
 accelerate(Velocity, CurrentPosition, BestPosition, Neighbors) ->
     [{GlobalBest, _}|_] = lists:keysort(2, Neighbors),
-    SelfAcceleration = scale_vector(2.0 * rand:uniform_real(),
-                         subtract_vectors(BestPosition, CurrentPosition)),
-    GlobalAcceleration = scale_vector(2.0 * rand:uniform_real(),
-                           subtract_vectors(BestPosition, GlobalBest)),
-    add_vectors(Velocity, add_vectors(SelfAcceleration, GlobalAcceleration)).
-
--spec scale_vector(float(), vector()) -> vector().
-scale_vector(ScaleFactor, X) ->
-    [ScaleFactor * Xi || Xi <- X].
-
--spec subtract_vectors(X :: vector(), Y :: vector()) -> vector().
-subtract_vectors(X, Y) ->
-    lists:zipwith(fun(Xi, Yi) -> Xi - Yi end, X, Y).
-
--spec add_vectors(X :: vector(), Y :: vector()) -> vector().
-add_vectors(X, Y) ->
-    lists:zipwith(fun(Xi, Yi) -> Xi + Yi end, X, Y).
+    SelfAcceleration = vector:multiply(?PHI * rand:uniform_real(),
+                         vector:subtract(BestPosition, CurrentPosition)),
+    GlobalAcceleration = vector:multiply(?PHI * rand:uniform_real(),
+                           vector:subtract(BestPosition, GlobalBest)),
+    vector:add(
+      vector:multiply(?OMEGA, Velocity),
+      vector:add(SelfAcceleration, GlobalAcceleration)).
 
 %% @doc Return the current position of `Particle'.
 -spec position(Particle :: particle()) -> position().
@@ -114,26 +107,9 @@ eval(Particle = #particle{best_value = BestValue,
 %% @end
 -spec step(Particle :: particle(), Neighbors :: [{position(), value()}]) -> particle().
 step(Particle, Neighbors) ->
-    NewVelocity = accelerate(Particle#particle.velocity,
-                             Particle#particle.position,
-                             Particle#particle.best_position,
-                             Neighbors),
-    NewPosition = add_vectors(Particle#particle.position, NewVelocity),
+    NewVelocity =  accelerate(Particle#particle.velocity,
+                              Particle#particle.position,
+                              Particle#particle.best_position,
+                              Neighbors),
+    NewPosition = vector:add(Particle#particle.position, NewVelocity),
     eval(Particle#particle{velocity = NewVelocity}, NewPosition).
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-add_vectors_test() ->
-    ?assertEqual([0, 0, 0], add_vectors([1, 2, 3], [-1, -2, -3])).
-
-scale_vector_test_() ->
-    [?_assertEqual([0.0, 0.0, 0.0],
-                   scale_vector(0.0, [1.0, 2.0, 3.0])),
-     ?_assertEqual([1.0, 2.0, 3.0],
-                   scale_vector(1.0, [1.0, 2.0, 3.0])),
-     ?_assertEqual([-3.0, -4.0, 7.0],
-                   scale_vector(2.0, [-1.5, -2, 3.5]))].
-
--endif.
