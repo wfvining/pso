@@ -7,7 +7,7 @@
 
 -module(particle).
 
--export([new/3, step/2, position/1, value/1, state/1]).
+-export([new/3, new/5, step/2, position/1, value/1, state/1]).
 
 -export_type([particle/0, position/0]).
 
@@ -49,6 +49,17 @@ new(Position, Velocity, ObjectiveFun) ->
               objective = ObjectiveFun,
               best_position = Position,
               best_value = Value}.
+
+%% @doc Create a new particle with Upper and lower bounds on position.
+-spec new(Position :: position(),
+          Velocity :: velocity(),
+          ObjectiveFun :: fun((position()) -> value()),
+          MaxPosition :: position(),
+          MinPosition :: position()) -> particle().
+new(Position, Velocity, ObjectiveFun, MaxPosition, MinPosition) ->
+    Particle = new(Position, Velocity, ObjectiveFun),
+    Particle#particle{min_position = MinPosition, max_position = MaxPosition}.
+
 
 %% @doc
 %% Apply the original PSO acceleration algorithm to `Velocity'.
