@@ -1,6 +1,7 @@
 -module(vector).
 
--export([magnitude/1, add/2, subtract/2, multiply/2, scale_to/2]).
+-export([magnitude/1, add/2, subtract/2, multiply/2, scale_to/2,
+         from_list/1, to_list/1]).
 
 -export_type([vector/0]).
 
@@ -24,6 +25,14 @@ subtract(X, Y) ->
 -spec multiply(Scale :: float(), X :: vector()) -> vector().
 multiply(Scale, X) ->
     [Scale * Xi || Xi <- X].
+
+%% @doc Build a vector from a list of components.
+-spec from_list(List :: [float()]) -> vector().
+from_list(List) -> List.
+
+%% @doc Return a list of the components of the vector.
+-spec to_list(Vector :: vector()) -> [float()].
+to_list(Vector) -> Vector.
 
 %% @doc
 %% Return a new vector in the same direction as `X' with length

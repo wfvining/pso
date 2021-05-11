@@ -22,7 +22,9 @@
                    value :: value(),
                    objective :: objective_fun(),
                    best_position = [0.0] :: position(),
-                   best_value = 0.0 :: value()}).
+                   best_value = 0.0 :: value(),
+                   max_position :: undefined | position(),
+                   min_position :: undefined | position()}).
 
 -opaque particle() :: #particle{}.
 
@@ -107,9 +109,80 @@ eval(Particle = #particle{best_value = BestValue,
 %% @end
 -spec step(Particle :: particle(), Neighbors :: [{position(), value()}]) -> particle().
 step(Particle, Neighbors) ->
-    NewVelocity =  accelerate(Particle#particle.velocity,
-                              Particle#particle.position,
-                              Particle#particle.best_position,
-                              Neighbors),
-    NewPosition = vector:add(Particle#particle.position, NewVelocity),
+    NewVelocity = limit_velocity(
+                    Particle#particle.max_position,
+                    Particle#particle.min_position,
+                    accelerate(Particle#particle.velocity,
+                               Particle#particle.position,
+                               Particle#particle.best_position,
+                               Neighbors)),
+    NewPosition = limit_position(
+                    Particle#particle.max_position,
+                    Particle#particle.min_position,
+                    vector:add(Particle#particle.position, NewVelocity)),
     eval(Particle#particle{velocity = NewVelocity}, NewPosition).
+
+sign(X) when X < 0 -> -1;
+sign(X) when X > 0 -> 1;
+sign(X) when X == 0 -> 0.
+
+limit_velocity(undefined, undefined, Velocity) ->
+    Velocity;
+limit_velocity(Max, Min, Velocity)
+  when (Max =/= undefined) and (Min =/= undefined) ->
+    Bounds = [abs(X) || X <- vector:to_list(vector:subtract(Max, Min))],
+    vector:from_list([if abs(X) > Limit -> sign(X) * Limit;
+                         abs(X) =< Limit -> X
+                      end || {X, Limit} <- lists:zip(Velocity, Bounds)]).
+
+limit_position(undefined, undefined, Velocity) ->
+    Velocity;
+limit_position(Max, Min, Velocity)
+  when (Max =/= undefined) and (Min =/= undefined) ->
+    vector:from_list(
+      [if X > XMax -> XMax;
+          X < XMin -> XMin;
+          true -> X
+       end || {X, XMax, XMin} <- lists:zip3(Velocity, Max, Min)]).
+
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+limit_position_test_() ->
+    Max = [1.0, 0.0, -1.0],
+    Min = [0.0, -1.0, -2.0],
+    [?_assertEqual([0.5, -0.5, -1.5],
+                   limit_position(Max, Min, [0.5, -0.5, -1.5])),
+     ?_assertEqual(Max, limit_position(Max, Min, Max)),
+     ?_assertEqual(Min, limit_position(Max, Min, Min)),
+     ?_assertEqual(Max, limit_position(Max, Min, [X + 1 || X <- Max])),
+     ?_assertEqual(Min, limit_position(Max, Min, [X - 1 || X <- Min]))].
+
+limit_velocity_test_() ->
+    Max = [1.0, 0.0, -1.0, 1.0],
+    Min = [0.0, -1.0, -2.0, -1.0],
+    VelocityLimits = [abs(X - Y) || {X, Y} <- lists:zip(Max, Min)],
+    [[?_assertEqual(Expected, X)
+      || {X, Expected} <- lists:zip(
+                            vector:to_list(
+                              limit_velocity(
+                                Max, Min,
+                                vector:from_list([2.0, 1.1, -1.1, 3.0]))),
+                            [1.0, 1.0, -1.0, 2.0])],
+     [?_assertEqual(Expected, X)
+      || {X, Expected} <- lists:zip(
+                            vector:to_list(
+                              limit_velocity(
+                                Max, Min,
+                                vector:from_list([-2.0, 0.0, 101, -3.0]))),
+                            [-1.0, 0.0, 1.0, -2.0])],
+     ?_assertEqual(vector:from_list([1.0, 1.0, 1.0, 1.0]),
+                   limit_velocity(Max, Min,
+                                  vector:from_list([1.0, 1.0, 1.0, 1.0]))),
+     ?_assertEqual(vector:from_list([0.0, 0.0, 0.0, 0.0]),
+                   limit_velocity(Max, Min,
+                                  vector:from_list([0.0, 0.0, 0.0, 0.0])))].
+
+-endif.
