@@ -9,18 +9,19 @@
 
 -export([new/3, new/5, step/2, position/1, value/1, state/1]).
 
--export_type([particle/0, position/0]).
+-export_type([particle/0, position/0, velocity/0,
+              value/0, objective/0]).
 
 -type vector() :: [float()].
 -type position() :: vector().
 -type velocity() :: vector().
 -type value() :: term().
--type objective_fun() :: fun((position()) -> value()).
+-type objective() :: fun((position()) -> value()).
 
 -record(particle, {position = [0.0] :: position(),
                    velocity = [0.0] :: velocity(),
                    value :: value(),
-                   objective :: objective_fun(),
+                   objective :: objective(),
                    best_position = [0.0] :: position(),
                    best_value = 0.0 :: value(),
                    max_position :: undefined | position(),
@@ -54,12 +55,11 @@ new(Position, Velocity, ObjectiveFun) ->
 -spec new(Position :: position(),
           Velocity :: velocity(),
           ObjectiveFun :: fun((position()) -> value()),
-          MaxPosition :: position(),
-          MinPosition :: position()) -> particle().
-new(Position, Velocity, ObjectiveFun, MaxPosition, MinPosition) ->
+          MinPosition :: position(),
+          MaxPosition :: position()) -> particle().
+new(Position, Velocity, ObjectiveFun, MinPosition, MaxPosition) ->
     Particle = new(Position, Velocity, ObjectiveFun),
     Particle#particle{min_position = MinPosition, max_position = MaxPosition}.
-
 
 %% @doc
 %% Apply the original PSO acceleration algorithm to `Velocity'.
