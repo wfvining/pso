@@ -10,13 +10,14 @@
 -export([new/3, new/5, step/2, position/1, value/1, state/1]).
 
 -export_type([particle/0, position/0, velocity/0,
-              value/0, objective/0]).
+              value/0, objective/0, state/0]).
 
 -type vector() :: [float()].
 -type position() :: vector().
 -type velocity() :: vector().
 -type value() :: term().
 -type objective() :: fun((position()) -> value()).
+-type state() :: {position(), value()}.
 
 -record(particle, {position = [0.0] :: position(),
                    velocity = [0.0] :: velocity(),
