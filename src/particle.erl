@@ -71,10 +71,12 @@ new(Position, Velocity, ObjectiveFun, MinPosition, MaxPosition) ->
                  Neighbors :: [{position(), value()}]) -> velocity().
 accelerate(Velocity, CurrentPosition, BestPosition, Neighbors) ->
     [{GlobalBest, _}|_] = lists:keysort(2, Neighbors),
-    SelfAcceleration = vector:multiply(?PHI * rand:uniform_real(),
+    SelfAcceleration = vector:multiply(
+                         ?PHI * rand:uniform_real(),
                          vector:subtract(BestPosition, CurrentPosition)),
-    GlobalAcceleration = vector:multiply(?PHI * rand:uniform_real(),
-                           vector:subtract(BestPosition, GlobalBest)),
+    GlobalAcceleration = vector:multiply(
+                           ?PHI * rand:uniform_real(),
+                           vector:subtract(GlobalBest, CurrentPosition)),
     vector:add(
       vector:multiply(?OMEGA, Velocity),
       vector:add(SelfAcceleration, GlobalAcceleration)).
@@ -162,6 +164,39 @@ limit_position(Max, Min, Velocity)
 
 -include_lib("eunit/include/eunit.hrl").
 
+step_test_() ->
+    Particle = particle:new([10.0], [0.0], fun([X]) -> abs(X) end),
+    [{"Particle moves towards its only neighbor to the right",
+      fun() ->
+              [NewPosition] = particle:position(
+                                particle:step(Particle, [{[30.0], 30.0}])),
+              ?assert(NewPosition > 10.0)
+      end},
+     {"Particle moves towards its only neighbor to the left",
+      fun() ->
+              [NewPosition] = particle:position(
+                                particle:step(Particle, [{[-10.0], 10.0}])),
+              ?assert(NewPosition < 10.0)
+      end},
+     {"Particle moves towards its best neighbor (to the right)",
+      fun() ->
+              [NewPosition] =
+                  particle:position(
+                    particle:step(
+                      Particle,
+                      [{[-10.0], 10.0}, {[30.0], 1.0}, {[0.0], 2.0}])),
+              ?assert(NewPosition > 10.0)
+      end},
+     {"Particle moves towards its best neighbor (to the left)",
+      fun() ->
+              [NewPosition] =
+                  particle:position(
+                    particle:step(
+                      Particle,
+                      [{[-10.0], 0.0}, {[30.0], 1.0}, {[10.0], 10.0}])),
+              ?assert(NewPosition < 10.0)
+      end}].
+
 limit_position_test_() ->
     Max = [1.0, 0.0, -1.0],
     Min = [0.0, -1.0, -2.0],
@@ -175,7 +210,6 @@ limit_position_test_() ->
 limit_velocity_test_() ->
     Max = [1.0, 0.0, -1.0, 1.0],
     Min = [0.0, -1.0, -2.0, -1.0],
-    VelocityLimits = [abs(X - Y) || {X, Y} <- lists:zip(Max, Min)],
     [[?_assertEqual(Expected, X)
       || {X, Expected} <- lists:zip(
                             vector:to_list(
