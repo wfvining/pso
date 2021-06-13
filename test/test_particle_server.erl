@@ -8,12 +8,12 @@ start_servers() ->
                       [10.0],
                       [-1.0],
                       Square,
-                      [{bounds, {[-1.0], [1.0]}}]),
+                      [{bounds, {[-5.0], [5.0]}}]),
     {ok, Server2} = particle_server:start_link(
                       [-10.0],
                       [1.0],
                       Square,
-                      [{bounds, {[-1.0], [1.0]}}]),
+                      [{bounds, {[-5.0], [5.0]}}]),
     {Server1, Server2}.
 
 stop_servers({Server1, Server2}) ->
@@ -46,16 +46,16 @@ single_step_test_() ->
                         {[PositionB], _} = particle_server:state(ServerB, 2),
                         ?assert(PositionB >= -10.0)
                 end},
-              {"after more iterations the particles move closer to 0.0",
+              {"particles keep moving after more iterations",
                fun() ->
                        {[StartingA], _} = particle_server:state(ServerA),
                        {[StartingB], _} = particle_server:state(ServerB),
-                       {ok, 1002} = particle_server:eval(ServerA, 1000),
-                       {ok, 1002} = particle_server:eval(ServerB, 1000),
-                       {[EndingA], _} = particle_server:state(ServerA, 1002),
-                       {[EndingB], _} = particle_server:state(ServerB, 1002),
-                       ?assert(abs(EndingA) < abs(StartingA)),
-                       ?assert(abs(EndingB) < abs(StartingB))
+                       {ok, 102} = particle_server:eval(ServerA, 100),
+                       {ok, 102} = particle_server:eval(ServerB, 100),
+                       {[EndingA], _} = particle_server:state(ServerA, 102),
+                       {[EndingB], _} = particle_server:state(ServerB, 102),
+                       ?assertNotEqual(StartingA, EndingA),
+                       ?assertNotEqual(StartingB, EndingB)
                end},
               {"the final values are the output of the objective function",
                fun() ->
