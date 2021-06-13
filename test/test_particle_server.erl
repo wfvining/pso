@@ -3,17 +3,17 @@
 -include_lib("eunit/include/eunit.hrl").
 
 start_servers() ->
-    Abs = fun([X]) -> abs(X) end,
+    Square = fun([X]) -> X*X end,
     {ok, Server1} = particle_server:start_link(
                       [10.0],
                       [-1.0],
-                      Abs,
-                      [{bounds, {[-10.0], [10.0]}}]),
+                      Square,
+                      [{bounds, {[-1.0], [1.0]}}]),
     {ok, Server2} = particle_server:start_link(
                       [-10.0],
                       [1.0],
-                      Abs,
-                      [{bounds, {[-10.0], [10.0]}}]),
+                      Square,
+                      [{bounds, {[-1.0], [1.0]}}]),
     {Server1, Server2}.
 
 stop_servers({Server1, Server2}) ->
@@ -50,10 +50,10 @@ single_step_test_() ->
                fun() ->
                        {[StartingA], _} = particle_server:state(ServerA),
                        {[StartingB], _} = particle_server:state(ServerB),
-                       {ok, 502} = particle_server:eval(ServerA, 500),
-                       {ok, 502} = particle_server:eval(ServerB, 500),
-                       {[EndingA], _} = particle_server:state(ServerA, 502),
-                       {[EndingB], _} = particle_server:state(ServerB, 502),
+                       {ok, 1002} = particle_server:eval(ServerA, 1000),
+                       {ok, 1002} = particle_server:eval(ServerB, 1000),
+                       {[EndingA], _} = particle_server:state(ServerA, 1002),
+                       {[EndingB], _} = particle_server:state(ServerB, 1002),
                        ?assert(abs(EndingA) < abs(StartingA)),
                        ?assert(abs(EndingB) < abs(StartingB))
                end},
@@ -61,8 +61,8 @@ single_step_test_() ->
                fun() ->
                        {[A], ValueA} = particle_server:state(ServerA),
                        {[B], ValueB} = particle_server:state(ServerB),
-                       ?assertEqual(abs(A), ValueA),
-                       ?assertEqual(abs(B), ValueB)
+                       ?assertEqual(A*A, ValueA),
+                       ?assertEqual(B*B, ValueB)
                end}]}
      end}.
 
