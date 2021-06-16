@@ -7,7 +7,7 @@
 
 -module(network).
 
--export([empty/0, empty/1, from_edges/1, from_edges/2]).
+-export([empty/0, empty/1, from_edges/1, from_edges/2, ring/2]).
 -export([neighbors/2, all_nodes/1, all_edges/1, foreach_node/2]).
 
 -record(network, {type = undirected :: edge_type(),
@@ -79,3 +79,11 @@ all_edges(#network{adjacency_list = AdjacencyList}) ->
 -spec foreach_node(Fun :: fun((term()) -> term()), Network :: network()) -> ok.
 foreach_node(Fun, Network) ->
     lists:foreach(Fun, maps:keys(Network#network.adjacency_list)).
+
+%% @doc Construct a ring network with `NumNodes' nodes and `Radius'.
+-spec ring(NumNodes :: pos_integer(), Radius :: pos_integer()) -> network().
+ring(NumNodes, Radius) ->
+    Edges = lists:flatten(
+              [[{X, Y rem NumNodes} || Y <- lists:seq(X+1, X + Radius)]
+               || X <- lists:seq(0, NumNodes - 1)]),
+    network:from_edges(Edges).
