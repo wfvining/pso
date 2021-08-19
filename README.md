@@ -44,3 +44,24 @@ Network = network:ring(50, 5),
 % run 1000 iterations
 pso:run(Sphere, Points, Velocities, Network, 1000)
 ```
+
+## To Do
+
+What are the next steps? Where do I want to take this?
+
+- [ ] Configurable random seeds for particles
+- [ ] Checkpoints - Is it worth being able to checkpoint and restore
+      the state of the particles? This could be useful for recovering
+      when the evaluation function crashes the particle server.
+- [ ] Alternative evaluators - I would like to be able to configure a
+      process pool to use for the evaluation of the particles. I have
+      a few ideas about this (beyond a simple pool, could do some kind
+      of distributed load-balancing process pool as well).
+- [ ] Should we supervise the particle servers? Could build out a
+      supervisor for the particle servers, but it isn't clear to me
+      that this would really be all that helpful. We pretty much want
+      to fail the run if one of them crashes, and they aren't meant to
+      be long-lived anyway. What is the benefit of supervision in this
+      case? Well, if we supervised `one_for_one`, we could recover
+      from sporadic failures without sacrificing the
+      computation/progress that has been made so far.
