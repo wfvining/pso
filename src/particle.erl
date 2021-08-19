@@ -7,7 +7,7 @@
 
 -module(particle).
 
--export([new/3, new/5, step/2, position/1, value/1, state/1]).
+-export([new/3, new/5, step/2, position/1, value/1, state/1, velocity/1]).
 
 -export_type([particle/0, position/0, velocity/0,
               value/0, objective/0, state/0]).
@@ -96,6 +96,11 @@ value(#particle{value = Value}) -> Value.
 -spec state(Particle :: particle()) -> {position(), value()}.
 state(Particle) ->
     {position(Particle), value(Particle)}.
+
+%% @doc Return the particle's current velocity.
+-spec velocity(particle()) -> velocity().
+velocity(#particle{velocity = Velocity}) ->
+    Velocity.
 
 %% @doc Evaluate the objective function at the particle's current position.
 -spec eval(Particle :: particle(), Position :: position()) -> particle().

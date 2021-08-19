@@ -18,9 +18,9 @@
 -behaviour(gen_server).
 
 -export([init/1, handle_cast/2, handle_call/3, handle_info/2, code_change/3,
-         terminate/2]).
+         handle_continue/2, terminate/2]).
 
--export([eval/2, state/1, state/2, set_neighbors/2, start_link/4, stop/1]).
+-export([eval/2, state/1, state/2, set_neighbors/2, start_link/5, stop/1]).
 
 -record(state, {particle :: particle:particle(),
                 neighbors = [] :: [pid()],
@@ -39,21 +39,22 @@
 %% position pass ``[{bounds, {MinPosition, MaxPosition}}]'' in
 %% `Options'.
 %% @end
--spec start_link(Position :: particle:position(),
+-spec start_link(ParticleId :: term(),
+                 Position :: particle:position(),
                  Velocity :: particle:velocity(),
                  ObjectiveFun :: particle:objective(),
                  Options :: proplists:proplist()) -> {ok, pid()}.
-start_link(Position, Velocity, ObjectiveFun, Options) ->
+start_link(ParticleId, Position, Velocity, ObjectiveFun, Options) ->
     case proplists:get_value(bounds, Options, nil) of
         {MinBound, MaxBound} ->
             gen_server:start_link(
               ?MODULE,
-              [Position, Velocity, ObjectiveFun, MinBound, MaxBound],
+              {ParticleId, [Position, Velocity, ObjectiveFun, MinBound, MaxBound]},
               []);
         nil ->
             gen_server:start_link(
               ?MODULE,
-              [Position, Velocity, ObjectiveFun],
+              {ParticleId, [Position, Velocity, ObjectiveFun]},
               [])
     end.
 
@@ -96,10 +97,26 @@ stop(ParticleServer) ->
 set_neighbors(ParticleServer, Neighbors) ->
     gen_server:cast(ParticleServer, {set_neighbors, Neighbors}).
 
-init(ParticleArgs) ->
+init(Args) ->
     {ok,
-     #state{particle = apply(particle, new, ParticleArgs),
-            iteration = 1}}.
+     nil,
+     {continue, {initialize_particle, Args}}}.
+
+handle_continue({initialize_particle, {ParticleId, ParticleArgs}}, nil) ->
+    %% XXX Assumes that the checkpoint server is started first.
+    case checkpoint_server:get_checkpoint(ParticleId) of
+        none ->
+            {noreply,
+             #state{
+                particle = apply(particle, new, ParticleArgs),
+                iteration = 1}};
+        {Iteration, {Position, Value, Velocity}} ->
+            [_, _, _ | Bounds] = ParticleArgs,
+            {noreply,
+             #state{
+                particle = apply(particle, new, [Position, Velocity, Value | Bounds]),
+                iteration = Iteration}}
+    end.
 
 handle_call({eval, _}, _From, State = #state{iteration = Iteration,
                                              stop_iteration = StopIteration})
